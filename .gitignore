@@ -1,0 +1,5 @@
+src/xxhash
+src/xxhash.exe
+
+# TODO: Implement tests
+tests/*
