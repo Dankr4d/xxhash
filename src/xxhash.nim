@@ -1,49 +1,50 @@
 {.compile: "xxHash/xxhash.c".}
 
-const XXHASH_HEADER = "xxHash/xxhash.h"
+import os # Required for parentDir
+const XXHASH_HEADER: string = currentSourcePath().parentDir() / "xxHash/xxhash.h"
 
 type
-  XXH64_state_t {.importc, header: XXHASH_HEADER, bycopy.} = object
-    total_len: XXH64_hash_t
-    v1: XXH64_hash_t
-    v2: XXH64_hash_t
-    v3: XXH64_hash_t
-    v4: XXH64_hash_t
-    mem64: array[4, XXH64_hash_t]
-    memsize: XXH32_hash_t
-    reserved32: XXH32_hash_t # /* required for padding anyway */
-    reserved64: XXH64_hash_t # /* never read nor write, might be removed in a future version */
-  XXH32_state_t {.importc, header: XXHASH_HEADER, bycopy.} = object
-    total_len_32: XXH32_hash_t
-    large_len: XXH32_hash_t
-    v1: XXH32_hash_t
-    v2: XXH32_hash_t
-    v3: XXH32_hash_t
-    v4: XXH32_hash_t
-    mem32: array[4, XXH32_hash_t]
-    memsize: XXH32_hash_t
-    reserved: XXH32_hash_t
-  XXH3_state_t {.importc, header: XXHASH_HEADER, bycopy.} = object
-    bufferedSize: XXH32_hash_t
-    nbStripesPerBlock: XXH32_hash_t
-    nbStripesSoFar: XXH32_hash_t
-    secretLimit: XXH32_hash_t
-    reserved32: XXH32_hash_t
-    reserved32_2: XXH32_hash_t
-    totalLen: XXH64_hash_t
-    seed: XXH64_hash_t
-    reserved64: XXH64_hash_t
-    secret: cstring
-  XXH128_hash_t {.importc, header: XXHASH_HEADER, bycopy.} = object
-    low64: XXH64_hash_t
-    high64: XXH64_hash_t
-  XXH32_canonical_t = array[4, char]
-  XXH64_canonical_t = array[8, char]
-  XXH128_canonical_t {.importc, header: XXHASH_HEADER, bycopy.} = object
-    digest: array[16, char]
-  XXH64_hash_t = uint64
-  XXH32_hash_t = uint32
-  XXH_errorcode {.importc.} = enum
+  XXH64_state_t* {.importc, header: XXHASH_HEADER, bycopy.} = object
+    total_len*: XXH64_hash_t
+    v1*: XXH64_hash_t
+    v2*: XXH64_hash_t
+    v3*: XXH64_hash_t
+    v4*: XXH64_hash_t
+    mem64*: array[4, XXH64_hash_t]
+    memsize*: XXH32_hash_t
+    reserved32*: XXH32_hash_t # /* required for padding anyway */
+    reserved64*: XXH64_hash_t # /* never read nor write, might be removed in a future version */
+  XXH32_state_t* {.importc, header: XXHASH_HEADER, bycopy.} = object
+    total_len_32*: XXH32_hash_t
+    large_len*: XXH32_hash_t
+    v1*: XXH32_hash_t
+    v2*: XXH32_hash_t
+    v3*: XXH32_hash_t
+    v4*: XXH32_hash_t
+    mem32*: array[4, XXH32_hash_t]
+    memsize*: XXH32_hash_t
+    reserved*: XXH32_hash_t
+  XXH3_state_t* {.importc, header: XXHASH_HEADER, bycopy.} = object
+    bufferedSize*: XXH32_hash_t
+    nbStripesPerBlock*: XXH32_hash_t
+    nbStripesSoFar*: XXH32_hash_t
+    secretLimit*: XXH32_hash_t
+    reserved32*: XXH32_hash_t
+    reserved32_2*: XXH32_hash_t
+    totalLen*: XXH64_hash_t
+    seed*: XXH64_hash_t
+    reserved64*: XXH64_hash_t
+    secret*: cstring
+  XXH128_hash_t* {.importc, header: XXHASH_HEADER, bycopy.} = object
+    low64*: XXH64_hash_t
+    high64*: XXH64_hash_t
+  XXH32_canonical_t* = array[4, char]
+  XXH64_canonical_t* = array[8, char]
+  XXH128_canonical_t* {.importc, header: XXHASH_HEADER, bycopy.} = object
+    digest*: array[16, char]
+  XXH64_hash_t* = uint64
+  XXH32_hash_t* = uint32
+  XXH_errorcode* {.importc.} = enum
     XXH_OK = 0,
     XXH_ERROR
 
@@ -96,11 +97,10 @@ proc XXH_versionNumber*(): cuint {.cdecl, header: XXHASH_HEADER, importc.}
 ### Wrapper
 import streams # Required for streamed hashing
 
-proc streamedXXH64*(path: string, bufferSize: int): uint64 =
+proc streamedXXH64*(path: string, bufferSize: int, seed: uint64 = 0): uint64 =
   var state: ptr XXH64_state_t = XXH64_createState()
   # if state == nil: return 0
   var buffer: pointer = alloc(bufferSize)
-  var seed: XXH64_hash_t = 0; # /* or any other value */
   discard XXH64_reset(state, seed) # if XXH64_reset(state, seed) == XXH_ERROR: return 0
   var strm = newFileStream(path, fmRead)
   # if strm.isNil: return 0
@@ -111,6 +111,20 @@ proc streamedXXH64*(path: string, bufferSize: int): uint64 =
   var hash: XXH64_hash_t = XXH64_digest(state)
   dealloc(buffer)
   discard XXH64_freeState(state)
+  return hash
+
+proc streamedXXH32*(path: string, bufferSize: int, seed: uint32 = 0): uint32 =
+  var state: ptr XXH32_state_t = XXH32_createState()
+  var buffer: pointer = alloc(bufferSize)
+  discard XXH32_reset(state, seed)
+  var strm = newFileStream(path, fmRead)
+  while not strm.atEnd():
+    var length: int = strm.readData(cast[cstring](buffer), bufferSize)
+    discard XXH32_update(state, cast[cstring](buffer), length)
+  strm.close()
+  var hash: XXH32_hash_t = XXH32_digest(state)
+  dealloc(buffer)
+  discard XXH32_freeState(state)
   return hash
 ##
 
